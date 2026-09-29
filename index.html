@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frame Study · 链接采集</title>
+  <style>
+    :root { color-scheme:dark; font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; background:#11130f; color:#f2f1e8; }
+    * { box-sizing:border-box; } body { margin:0; } a { color:#d2ef9d; }
+    .wrap { max-width:1140px; margin:auto; padding:42px 28px 80px; }
+    header { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:62px; }
+    .logo { font-size:15px; font-weight:800; letter-spacing:.1em; }
+    .muted { color:#aeb5a8; }
+    h1 { font-size:clamp(38px,5vw,65px); line-height:1.13; letter-spacing:-.045em; max-width:870px; margin:0 0 18px; }
+    h2 { font-size:20px; margin:0 0 12px; }
+    .accent { color:#d2ef9d; }
+    .intro { color:#aeb5a8; line-height:1.7; max-width:700px; margin:0 0 29px; }
+    .panel { border:1px solid #353d31; background:#1c211b; border-radius:18px; padding:24px; }
+    label { display:block; font-size:13px; color:#c2cbbd; margin:0 0 9px; }
+    textarea { width:100%; min-height:105px; resize:vertical; background:#111610; color:#f2f1e8; border:1px solid #56634e; border-radius:11px; padding:15px; font:inherit; line-height:1.55; }
+    textarea:focus { outline:2px solid #b6db82; outline-offset:2px; }
+    .actions { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin-top:14px; }
+    button { font:inherit; font-weight:700; padding:12px 19px; color:#182219; background:#d2ef9d; border:0; border-radius:10px; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:wait; }
+    .note { font-size:12px; color:#aeb5a8; line-height:1.65; }
+    .error { color:#ffb3a8; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+    .chip { font-size:12px; border:1px solid #56634e; background:#263024; color:#dce9ce; padding:6px 10px; border-radius:999px; }
+    .results { display:none; margin-top:25px; } .results.show { display:block; }
+    .heading { display:flex; align-items:baseline; justify-content:space-between; gap:14px; margin:0 0 16px; flex-wrap:wrap; }
+    .heading h2 { margin:0; }
+    .source { font-size:12px; overflow-wrap:anywhere; }
+    .assets { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:13px; margin-top:20px; }
+    .asset { background:#252d23; border-radius:12px; overflow:hidden; border:1px solid #354430; }
+    .preview { height:175px; background:#111610; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .preview img { max-width:100%; max-height:100%; object-fit:contain; }
+    .asset-copy { padding:12px; font-size:13px; }
+    .asset-copy b { display:block; margin-bottom:4px; }
+    .save-row { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin-top:21px; }
+    .files { display:none; margin-top:18px; padding-top:16px; border-top:1px solid #3b4837; }
+    .files.show { display:block; }
+    .files ul { margin:9px 0; padding-left:19px; line-height:1.9; }
+    .path { color:#becab6; overflow-wrap:anywhere; font-size:12px; }
+    .limits { margin-top:24px; color:#9da999; font-size:13px; line-height:1.8; }
+    @media(max-width:650px) { .wrap { padding:24px 16px 50px; } header { margin-bottom:40px; } .assets { grid-template-columns:repeat(2,minmax(0,1fr)); } .preview { height:145px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><div class="logo">FRAME STUDY <span class="accent">/</span> 链接采集</div><a class="muted" href="/analyze">打开画面分析 →</a></header>
+    <h1>粘贴作品链接，<br><span class="accent">找到其中的图片和视频。</span></h1>
+    <p class="intro">支持单篇作品的小红书、B 站、微博、500px 和 Instagram 链接。先解析出媒体列表，再由你决定是否保存到本机。</p>
+    <section class="panel">
+      <label for="link">作品链接或整段分享文案</label>
+      <textarea id="link" placeholder="例如：一公里摄影大赛… https://xhslink.cn/o/… 直达【小红书】"></textarea>
+      <div class="actions"><button id="extract">解析链接</button><span id="status" class="note">粘贴一个单篇作品链接开始。</span></div>
+      <div class="chips"><span class="chip">小红书</span><span class="chip">B 站</span><span class="chip">微博</span><span class="chip">500px</span><span class="chip">Instagram</span></div>
+    </section>
+    <section class="panel results" id="results">
+      <div class="heading"><h2 id="title">解析结果</h2><span id="platform" class="chip"></span></div>
+      <div id="author" class="note"></div>
+      <div class="source"><a id="source" target="_blank" rel="noopener noreferrer"></a></div>
+      <div class="assets" id="assets"></div>
+      <div class="save-row"><button id="save">保存全部到本机</button><span id="save-status" class="note">不会在解析时自动下载视频。</span></div>
+      <div class="files" id="files"><h2>已保存</h2><div id="folder" class="path"></div><ul id="file-list"></ul><div id="save-errors" class="note error"></div></div>
+    </section>
+    <p class="limits">仅处理当前可公开读取的单篇作品。平台可能要求登录、限制访问或更改页面格式；工具不会读取浏览器登录信息，也不会绕过访问限制。视频和图片保存到项目的 <code>downloads/</code> 目录，来源地址会一起记录。</p>
+  </div>
+  <script>
+    const $ = id => document.getElementById(id);
+    const platformNames = { xiaohongshu:'小红书', bilibili:'B 站', weibo:'微博', '500px':'500px', instagram:'Instagram' };
+    let inspectionId = null;
+    function status(message,error=false) { $('status').textContent=message; $('status').classList.toggle('error',error); }
+    async function json(response) { const data=await response.json(); if(!response.ok) throw new Error(data.error||`HTTP ${response.status}`); return data; }
+    $('extract').onclick=async()=>{
+      $('extract').disabled=true; $('results').classList.remove('show'); $('files').classList.remove('show'); status('正在访问作品页并查找媒体…');
+      try {
+        const data=await json(await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('link').value})}));
+        inspectionId=data.id; $('title').textContent=data.title; $('platform').textContent=platformNames[data.platform]||data.platform;
+        $('author').textContent=data.author?`作者：${data.author}`:'';
+        const sourceUrl=new URL(data.source); $('source').textContent=`${sourceUrl.hostname}${sourceUrl.pathname}`; $('source').href=data.source;
+        $('assets').replaceChildren(...data.assets.map((asset,i)=>{
+          const card=document.createElement('div');card.className='asset';
+          const preview=document.createElement('div');preview.className='preview';
+          const imageUrl=(asset.type==='image'||asset.preview)?`/api/preview/${data.id}/${asset.id}`:null;
+          if(imageUrl) { const image=document.createElement('img');image.src=imageUrl;image.alt=`${asset.role}预览`;image.loading='lazy';preview.append(image); }
+          else preview.textContent=asset.type==='video'?'▶ 视频':'图片';
+          const copy=document.createElement('div');copy.className='asset-copy';
+          const name=document.createElement('b');name.textContent=`${i+1}. ${asset.role}`;
+          const detail=document.createElement('span');detail.className='note';detail.textContent=asset.type==='video'?(asset.duration?`${Math.round(asset.duration)} 秒`:'视频'):(asset.width&&asset.height?`页面标注 ${asset.width} × ${asset.height}`:'图片');
+          copy.append(name,detail);card.append(preview,copy);return card;
+        }));
+        $('results').classList.add('show'); $('save').disabled=false; $('save-status').textContent='不会在解析时自动下载视频。';
+        status(`找到 ${data.assets.filter(x=>x.type==='image').length} 张图片、${data.assets.filter(x=>x.type==='video').length} 个视频。`);
+      } catch(e) { status(e.message||'解析失败。',true); }
+      finally { $('extract').disabled=false; }
+    };
+    $('save').onclick=async()=>{
+      if(!inspectionId) return;
+      $('save').disabled=true; $('save-status').textContent='正在创建保存任务…';
+      try {
+        const {taskId}=await json(await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:inspectionId})}));
+        for(;;) {
+          const task=await json(await fetch(`/api/tasks/${taskId}`));
+          $('save-status').textContent=task.message;
+          if(task.status==='error') throw new Error(task.message);
+          if(task.status==='done') {
+            $('folder').textContent=`目录：${task.folder}`;
+            $('file-list').replaceChildren(...task.files.map(file=>{const item=document.createElement('li');const a=document.createElement('a');a.href=`/api/files/${taskId}/${encodeURIComponent(file)}`;a.textContent=file;a.download=file;item.append(a);return item;}));
+            $('save-errors').textContent=task.errors.join('；'); $('files').classList.add('show'); break;
+          }
+          await new Promise(resolve=>setTimeout(resolve,1000));
+        }
+      } catch(e) { $('save-status').textContent=e.message||'保存失败。'; $('save-status').classList.add('error'); }
+      finally { $('save').disabled=false; }
+    };
+  </script>
+</body>
+</html>
