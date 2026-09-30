@@ -16,7 +16,7 @@ const mediaHosts = {
   xiaohongshu: ['xhscdn.com'],
   bilibili: ['hdslb.com', 'biliimg.com'],
   weibo: ['sinaimg.cn', 'sinaimg.com', 'weibo.com'],
-  '500px': ['500px.com', '500px.org', '500pxcdn.com', 'pximg.net'],
+  '500px': ['500px.com', '500px.org', '500px.cloud', '500pxcdn.com', 'pximg.net'],
   instagram: ['fbcdn.net', 'cdninstagram.com', 'instagram.com'],
 };
 

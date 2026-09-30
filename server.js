@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { inspectLink, downloadInspection, previewAsset } from './extractor.js';
 
@@ -18,7 +18,7 @@ composition 指出主体位置、视线引导、层次、留白和画幅；color
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
-  res.end(typeof body === 'string' ? body : JSON.stringify(body));
+  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
 function readBody(req) {
@@ -51,7 +51,52 @@ async function modelStatus() {
   }
 }
 
+const imageTypes = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.webp':'image/webp', '.avif':'image/avif' };
+async function downloadedImages() {
+  const images = [];
+  async function visit(dir) {
+    for (const entry of await readdir(dir, { withFileTypes:true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) await visit(path);
+      else if (entry.isFile() && /\.(jpe?g|png|webp|avif)$/i.test(entry.name)) {
+        const id = relative(downloadRoot, path);
+        images.push({ id, name:entry.name, folder:dirname(id), url:`/api/downloaded-image?path=${encodeURIComponent(id)}` });
+      }
+    }
+  }
+  try { await visit(downloadRoot); } catch (error) { if(error.code !== 'ENOENT') throw error; }
+  return images.sort((a,b)=>a.id.localeCompare(b.id));
+}
 const server = createServer(async (req, res) => {
+  const requestUrl = new URL(req.url, 'http://127.0.0.1');
+  if (req.method === 'GET' && ['/color-analysis.js', '/composition.js', '/auto-lines.js'].includes(requestUrl.pathname)) {
+    send(res, 200, await readFile(join(root, requestUrl.pathname.slice(1)), 'utf8'), 'text/javascript; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && /^\/composition-references\/(manifest\.json|(?:0[1-9]|1[0-4])\.jpg)$/.test(requestUrl.pathname)) {
+    try { const bytes=await readFile(join(root, requestUrl.pathname.slice(1))); send(res,200,bytes,requestUrl.pathname.endsWith('.json')?'application/json; charset=utf-8':'image/jpeg'); }
+    catch { send(res,404,{error:'构图范本不存在。'}); }
+    return;
+  }
+  if (req.method === 'GET' && requestUrl.pathname === '/api/downloaded-images') {
+    try { send(res, 200, { images:await downloadedImages() }); }
+    catch { send(res, 500, { error:'无法读取下载目录。' }); }
+    return;
+  }
+  if (req.method === 'GET' && requestUrl.pathname === '/api/downloaded-image') {
+    try {
+      const id = requestUrl.searchParams.get('path');
+      if (!id || isAbsolute(id)) throw new Error('无效路径');
+      const path = await realpath(join(downloadRoot, id));
+      const base = await realpath(downloadRoot);
+      const rel = relative(base, path);
+      if (rel === '..' || rel.startsWith('../') || isAbsolute(rel)) throw new Error('无效路径');
+      const ext = path.match(/\.[^.]+$/)?.[0].toLowerCase();
+      if (!imageTypes[ext]) throw new Error('不支持的图片');
+      const bytes = await readFile(path);
+      res.writeHead(200, { 'Content-Type':imageTypes[ext], 'Cache-Control':'no-store' }); res.end(bytes);
+    } catch { send(res, 404, { error:'图片不存在或不在下载目录中。' }); }
+    return;
+  }
   if (req.method === 'GET' && req.url === '/') {
     try {
       send(res, 200, await readFile(join(root, 'index.html'), 'utf8'), 'text/html; charset=utf-8');
