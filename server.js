@@ -7,7 +7,7 @@ import { inspectLink, downloadInspection, previewAsset } from './extractor.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 4173);
-const model = process.env.OLLAMA_MODEL || 'gemma3:4b';
+const model = process.env.OLLAMA_MODEL || 'qwen3-vl:8b';
 const ollama = 'http://127.0.0.1:11434';
 const downloadRoot = join(root, 'downloads');
 const inspections = new Map();
