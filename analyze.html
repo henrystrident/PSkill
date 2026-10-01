@@ -61,7 +61,7 @@
     .ai-output { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:17px; }
     .ai-item { background:#252b23; padding:16px; border-radius:10px; line-height:1.65; }
     .ai-item b { color:#d2ef9d; display:block; margin-bottom:6px; }
-    .ai-item p { margin:0; color:#e0e6d9; }
+    .ai-item p { margin:0; color:#e0e6d9; white-space:pre-line; overflow-wrap:anywhere; }
     footer { color:#82907f; font-size:12px; line-height:1.6; margin-top:24px; }
     a {color:#d2ef9d;} .downloads-panel {margin-bottom:18px;}
     .download-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
@@ -88,7 +88,7 @@
   <div class="wrap">
     <header><div class="logo">FRAME STUDY <span class="accent">/</span> 调色与构图分析</div><a class="tag" href="/">← 链接采集</a></header>
     <h1>从像素开始，<br><span class="accent">看清画面的色彩与明暗。</span></h1>
-    <p class="intro">选择已下载图片，或导入本地图片 / 视频。查看客观调色统计，勾画构图轮廓，并切换白底黑线的纯线图。全部在浏览器中完成，无需接入大模型。</p>
+    <p class="intro">选择已下载图片，或导入本地图片 / 视频。查看客观调色统计，勾画构图轮廓，并切换白底黑线的纯线图。像素统计在浏览器内完成，也可调用本机视觉模型分析照片的优点。</p>
     <section class="panel downloads-panel"><div class="ai-top"><h2>已下载图片</h2><button class="secondary" id="refresh-downloads">刷新列表</button></div><p class="note" id="download-status" role="status">正在读取下载目录…</p><div class="download-grid" id="download-list"></div></section>
     <details class="panel downloads-panel" id="reference-gallery"><summary>之前的南疆构图范本 · 14 张已勾线图片</summary><p class="note">复用之前人工描绘的山脊、前景、湖岸和桥梁线条，已按原来的范围裁出照片画面。</p><div class="download-grid" id="reference-list"></div><p class="note" id="reference-status"></p></details>
     <div class="panel">
@@ -97,7 +97,7 @@
         <input id="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,image/*,video/*">
         <div class="source"><label class="title" for="source">原始来源链接（可选）</label><input id="source" type="url" placeholder="粘贴小红书或其他作品链接，仅用于记录"><p class="hint">分享链接通常只是网页地址，不一定提供可读取的媒体。请同时导入你有权使用的文件，或截取需要研究的画面。</p></div>
       </div>
-      <div class="status"><span id="status" role="status">等待导入素材</span><span>浏览器本地统计 · 无模型调用</span></div>
+      <div class="status"><span id="status" role="status">等待导入素材</span><span>浏览器本地统计 · 可选本机模型分析</span></div>
     </div>
     <main id="results" class="results">
       <div class="section-head"><h2>画面观察</h2><span id="media-meta" class="meta"></span></div>
@@ -126,6 +126,7 @@
       <section class="panel ai"><h2>阴影 / 中间调 / 高光的色彩</h2><p class="note">按显示亮度 Y′ 分区：阴影 &lt; 85，中间调 85–&lt;170，高光 ≥170。Lab 的 a* 正值偏红、负值偏绿；b* 正值偏黄、负值偏蓝。数值描述画面色彩，不代表白平衡偏差。</p><div class="band-grid" id="bands"></div></section>
       <section class="panel ai"><h2>色相面积分布</h2><p class="note">各色相占全部有效像素的比例。低彩度像素（HSV S &lt;10%）或很暗的像素（最大 RGB &lt;16）单独计入无明显色相。</p><div id="hues" class="hues"></div></section>
       <section class="panel ai"><div class="ai-top"><h2>统计摘要</h2><button id="export-report">导出 JSON 报告</button></div><div class="ai-output" id="local-output"></div><div id="report-export" hidden><p class="note">报告已生成，可复制下方 JSON，或 <a id="report-download" download="color-analysis.json">下载 JSON 文件</a>。</p><textarea id="report-json" readonly aria-label="JSON 分析报告"></textarea></div><details><summary>查看统计口径</summary><p class="note" id="methods"></p></details></section>
+      <section class="panel ai" id="vision-panel"><div class="ai-top"><h2>这张照片好在哪里</h2><button id="analyze-vision">分析当前画面</button></div><p class="note">由本机 Ollama 视觉模型结合照片和像素统计分析。视频仅分析当前抽帧；使用原始画面，不使用勾线结果。首次加载可能较慢。</p><p class="note" id="vision-status" role="status" aria-live="polite">点击按钮开始分析。</p><div class="ai-output" id="vision-output"></div><p class="note" id="vision-save"></p></section>
       <footer>基于浏览器转换到 sRGB 的显示像素。平台压缩、图片内容、缩放和色彩管理都会影响结果；这些统计不能唯一反推出曝光、白平衡、LUT 或 Lightroom 参数。近黑 / 近白占比不代表拍摄原片已经发生剪切。</footer>
     </main>
   </div>
@@ -133,7 +134,7 @@
     import { CompositionEditor } from '/composition.js';
     import { analyzeRGBA } from "/color-analysis.js";
     const $ = id => document.getElementById(id);
-    let exportUrl=null;
+    let exportUrl=null, visionController=null, visionTimer=null;
     let items = [], kind = '', active = 0, report = null, loading = false;
     const composition=new CompositionEditor({onChange:()=>{$('report-export').hidden=true;}});
     const setStatus = (message, error=false) => { $('status').textContent=message; $('status').classList.toggle('error',error); };
@@ -148,7 +149,7 @@
     async function loadFile(file, reference=null) {
       if (!file || loading) return;
       if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) { setStatus('请选择图片或视频。',true); return; }
-      $('report-export').hidden=true; loading=true; report=null; $('export-report').disabled=true; setStatus('正在读取素材…'); items=[]; $('results').classList.remove('show');
+      cancelVision();$('report-export').hidden=true; loading=true; report=null; $('export-report').disabled=true; setStatus('正在读取素材…'); items=[]; $('results').classList.remove('show');
       const url=URL.createObjectURL(file);
       try {
         const fingerprint=file.type.startsWith('image/')?file:new Blob([String(file.size),file.slice(0,65536),file.slice(-65536)]);
@@ -184,13 +185,15 @@
       $('frames').style.display=items.length>1?'flex':'none';
     }
     function selectFrame(i) {
-      active=i; $('report-export').hidden=true; $('preview').src=items[i].url;
+      cancelVision();active=i; $('report-export').hidden=true; $('preview').src=items[i].url;
       $('preview').onload=positionGrid;
       document.querySelectorAll('.frame').forEach((x,n)=>x.classList.toggle('active',n===i));
       analyzePixels(items[i].canvas);
       report.source = { name:$('media-meta').textContent, url:$('source').value, kind, frameTime:items[i].time };
       composition.setFrame(items[i]);
       $('export-report').disabled=false;
+      try {const cached=JSON.parse(localStorage.getItem('frame-study-vision-v1:'+items[i].lineKey));if(cached?.result&&typeof cached.result.summary==='string')items[i].vision=cached;}catch{}
+      renderVision();
     }
     const percent = n => `${(n*100).toFixed(1)}%`;
     const signed = n => `${n>=0?'+':''}${n.toFixed(1)}`;
@@ -250,6 +253,51 @@
       );
       $('methods').textContent=Object.values(s.methods).join('。')+'。图片长边最多缩放到 960 像素，统计使用未经过 JPEG 二次压缩的画布数据。';
     }
+    function cancelVision() {
+      visionController?.abort();visionController=null;clearInterval(visionTimer);visionTimer=null;
+      $('analyze-vision').disabled=false;
+    }
+    function renderVision() {
+      const analysis=items[active]?.vision;const result=analysis?.result;
+      $('vision-output').replaceChildren();$('vision-save').textContent='';
+      $('analyze-vision').textContent=result?'重新分析当前画面':'分析当前画面';
+      $('vision-status').textContent=result?`${analysis.model} · ${new Date(analysis.analyzedAt).toLocaleString()} · 当前画面分析`:'点击按钮开始分析。';
+      if(!result)return;
+      const text=value=>typeof value==='string'?value:'';
+      $('vision-output').append(card('整体印象',text(result.summary)));
+      if(Array.isArray(result.strengths))for(const point of result.strengths.slice(0,3)){
+        if(!point||typeof point!=='object')continue;
+        const box=card(text(point.title)||'画面优点','');
+        for(const [label,key] of [['画面依据','evidence'],['产生的效果','effect']]){const p=document.createElement('p');p.textContent=label+'：'+text(point[key]);box.append(p);}
+        $('vision-output').append(box);
+      }
+      for(const [key,title] of [['composition','构图与视线'],['color','色彩与冷暖'],['lighting','光线与空间'],['practice','可以怎样学习'],['limitations','不确定性与改进']])if(text(result[key]))$('vision-output').append(card(title,result[key]));
+      $('vision-save').textContent='结果可通过“导出 JSON 报告”保存。模型判断可能有误，请结合原图核对。';
+    }
+    $('analyze-vision').onclick=async()=>{
+      if(loading||!report||visionController)return;
+      const frame=items[active],controller=new AbortController();visionController=controller;
+      const started=Date.now();$('analyze-vision').disabled=true;$('report-export').hidden=true;
+      const update=()=>{$('vision-status').textContent=`正在本机分析当前画面 · 已等待 ${Math.floor((Date.now()-started)/1000)} 秒`;};
+      update();visionTimer=setInterval(update,1000);
+      const timeout=setTimeout(()=>controller.abort(),610000);
+      try {
+        const stats={brightness:report.brightness,contrast:report.contrast,saturation:report.saturation,percentiles:report.percentiles,nearBlack:report.nearBlack,nearWhite:report.nearWhite,hues:report.hues,bands:report.bands,palette:report.palette};
+        const canvas=document.createElement('canvas');canvas.width=frame.canvas.width;canvas.height=frame.canvas.height;
+        const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(frame.canvas,0,0);
+        const response=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({images:[canvas.toDataURL('image/jpeg',.9)],kind:'image',statistics:stats})});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||'本地模型分析失败。');
+        if(!data.result||typeof data.result.summary!=='string')throw new Error('模型返回格式不完整，请重试。');
+        if(items[active]!==frame||visionController!==controller)return;
+        frame.vision={...data,frameTime:frame.time};renderVision();
+        try{localStorage.setItem('frame-study-vision-v1:'+frame.lineKey,JSON.stringify(frame.vision));$('vision-save').textContent+=' 已保存在当前浏览器，重新选择同一文件可恢复。';}catch{$('vision-save').textContent+=' 浏览器保存失败，请导出报告留存。';}
+      }catch(error){
+        if(items[active]===frame&&visionController===controller)$('vision-status').textContent=error.name==='AbortError'?'分析超时，请重试。':'分析失败：'+error.message+' 可点击按钮重试。';
+      }finally{
+        clearTimeout(timeout);
+        if(visionController===controller){clearInterval(visionTimer);visionTimer=null;visionController=null;$('analyze-vision').disabled=false;}
+      }
+    };
     async function loadDownloads() {
       $('refresh-downloads').disabled=true;
       try {
@@ -282,7 +330,7 @@
     $('refresh-downloads').onclick=loadDownloads;loadDownloads();
     $('export-report').onclick=()=>{
       if(!report)return;
-      const output={...report,composition:composition.snapshot(),source:{...report.source,url:$('source').value},exportedAt:new Date().toISOString()};
+      const output={...report,composition:composition.snapshot(),visionAnalysis:items[active]?.vision||null,source:{...report.source,url:$('source').value},exportedAt:new Date().toISOString()};
       const serialized=JSON.stringify(output,null,2);
       if(exportUrl)URL.revokeObjectURL(exportUrl);
       exportUrl=URL.createObjectURL(new Blob([serialized],{type:'application/json'}));
